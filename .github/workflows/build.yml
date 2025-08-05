@@ -8,31 +8,34 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Prepare JS parts
-      shell: bash
-      run: |
-        # 1. Разбиваем файл на части по 16KB
-        mkdir -p ASI_Loader/js_parts
-        split -b 16K custom.js ASI_Loader/js_parts/part_
-
-        # 2. Генерируем файл с данными
-        echo "const char* js_parts[] = {" > ASI_Loader/js_data.h
-        for f in ASI_Loader/js_parts/part_*; do
-          echo "R\"=====(" >> "$f.tmp"
-          cat "$f" >> "$f.tmp"
-          echo ")=====\"," >> "$f.tmp"
-          cat "$f.tmp" >> ASI_Loader/js_data.h
-        done
-        echo "};" >> ASI_Loader/js_data.h
-        echo "const int js_parts_count = $(ls ASI_Loader/js_parts/part_* | wc -l);" >> ASI_Loader/js_data.h
-
     - name: Setup MSVC
-      uses: microsoft/setup-msbuild@v1
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Prepare JS parts
+      shell: cmd
+      run: |
+        @echo off
+        mkdir ASI_Loader\js_parts
+        :: Разбиваем файл на части по 16KB
+        powershell -Command "& { Get-Content custom.js -ReadCount 0 | Out-File -Encoding OEM ASI_Loader\js_parts\part_00 }"
+        powershell -Command "& { $i=1; Get-Content custom.js -ReadCount 0 | Select-Object -Skip 16000 | Out-File -Encoding OEM ASI_Loader\js_parts\part_01 }"
+        :: Добавьте дополнительные строки для большего количества частей
+
+        :: Генерируем файл с данными
+        echo const char* js_parts[] = { > ASI_Loader\js_data.h
+        for %%f in (ASI_Loader\js_parts\part_*) do (
+            echo R"=====( >> "%%f.tmp"
+            type "%%f" >> "%%f.tmp"
+            echo )=====", >> "%%f.tmp"
+            type "%%f.tmp" >> ASI_Loader\js_data.h
+        )
+        echo }; >> ASI_Loader\js_data.h
+        echo const int js_parts_count = %%~z >> ASI_Loader\js_data.h
 
     - name: Compile
       shell: cmd
       run: |
-        cl /EHsc /LD ASI_Loader/ASI_Loader.cpp /Fe:ASI_Loader.asi /link shlwapi.lib
+        cl /EHsc /std:c++17 /LD ASI_Loader\ASI_Loader.cpp /Fe:ASI_Loader.asi /link shlwapi.lib
         if %errorlevel% neq 0 exit /b %errorlevel%
 
     - uses: actions/upload-artifact@v4
