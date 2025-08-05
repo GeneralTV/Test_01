@@ -5,7 +5,6 @@
 
 #pragma comment(lib, "shlwapi.lib")
 
-// Автоматически подключится при сборке
 extern "C" const char* js_parts[];
 extern "C" const int js_parts_count;
 
