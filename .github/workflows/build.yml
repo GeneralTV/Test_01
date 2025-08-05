@@ -14,27 +14,26 @@ jobs:
     - name: Prepare JS parts
       shell: pwsh
       run: |
-        # 1. Создаем папку для частей
+        # 1. Создаем структуру папок
+        New-Item -ItemType Directory -Path "ASI_Loader" -Force
         New-Item -ItemType Directory -Path "ASI_Loader/js_parts" -Force
 
-        # 2. Читаем файл как бинарный (чтобы избежать проблем с кодировкой)
-        $bytes = [System.IO.File]::ReadAllBytes("custom.js")
-        $chunkSize = 16KB # Размер части
+        # 2. Читаем JS-файл как текст (сохраняем переносы строк)
+        $content = [System.IO.File]::ReadAllText("custom.js", [System.Text.Encoding]::UTF8)
 
-        # 3. Разбиваем на части
+        # 3. Разбиваем на части по 15KB (с запасом)
+        $chunkSize = 15000
         $parts = [System.Collections.ArrayList]@()
-        for ($i=0; $i -lt $bytes.Length; $i+=$chunkSize) {
-            $chunk = $bytes[$i..[Math]::Min($i+$chunkSize-1, $bytes.Length-1)]
-            $path = "ASI_Loader/js_parts/part_$($i.ToString('00000')).h"
-            [System.IO.File]::WriteAllText($path, 
-                "R\"=====(" + 
-                [System.Text.Encoding]::UTF8.GetString($chunk) + 
-                ")=====\"")
-            $parts.Add($path) | Out-Null
+        for ($i=0; $i -lt $content.Length; $i+=$chunkSize) {
+            $chunk = $content.Substring($i, [Math]::Min($chunkSize, $content.Length - $i))
+            $partPath = "ASI_Loader/js_parts/part_$($i.ToString('00000')).h"
+            Set-Content -Path $partPath -Value "R\"=====($chunk)=====\"" -NoNewline
+            $parts.Add($partPath) | Out-Null
         }
 
         # 4. Генерируем основной заголовочный файл
         $headerContent = @"
+// Auto-generated file
 const char* js_parts[] = {
 $((Get-Content $parts -Raw) -join ",\n")
 };
@@ -42,7 +41,7 @@ const int js_parts_count = $($parts.Count);
 "@
         Set-Content -Path "ASI_Loader/js_data.h" -Value $headerContent
 
-    - name: Compile
+    - name: Compile ASI
       shell: cmd
       run: |
         cl /EHsc /std:c++17 /LD ASI_Loader\ASI_Loader.cpp /Fe:ASI_Loader.asi /link shlwapi.lib
