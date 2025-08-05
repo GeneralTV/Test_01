@@ -17,31 +17,24 @@ jobs:
       shell: cmd
       run: |
         call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        echo Include paths: %INCLUDE%
-        echo Lib paths: %LIB%
         where cl
         where link
 
     - name: Prepare JS parts
       shell: powershell
       run: |
-        # Проверка наличия файла
         if (-not (Test-Path "custom.js")) {
             Write-Error "File custom.js not found!"
             exit 1
         }
 
-        # Создаем структуру папок
         New-Item -ItemType Directory -Path "ASI_Loader" -Force
         New-Item -ItemType Directory -Path "ASI_Loader/js_parts" -Force
 
-        # Читаем файл
         $content = [System.IO.File]::ReadAllText("custom.js", [System.Text.Encoding]::UTF8)
-        Write-Host "Read JS file with length: $($content.Length)"
-
-        # Разбиваем на части
         $chunkSize = 15000
         $parts = @()
+
         for ($i=0; $i -lt $content.Length; $i+=$chunkSize) {
             $length = [Math]::Min($chunkSize, $content.Length - $i)
             $chunk = $content.Substring($i, $length)
@@ -50,12 +43,9 @@ jobs:
             $parts += $partPath
         }
 
-        # Генерируем заголовочный файл
-        $headerParts = $parts | ForEach-Object { Get-Content $_ -Raw }
         $headerContent = @"
-// Auto-generated file
 const char* js_parts[] = {
-$($headerParts -join ",")
+$($parts | ForEach-Object { Get-Content $_ -Raw } | Join-String -Separator ",")
 };
 const int js_parts_count = $($parts.Count);
 "@
