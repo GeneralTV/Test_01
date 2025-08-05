@@ -1,25 +1,55 @@
-name: Build ASI Loader
+name: Build ASI
 
 on: [push]
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  prepare:
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Prepare files
+      run: |
+        mkdir -p ASI_Loader
+        # Создаем include-файлы
+        python3 -c "
+        import base64
+        for f in ['index.html', 'custom.js']:
+            with open(f, 'rb') as src:
+                data = base64.b85encode(src.read()).decode()
+                chunks = [data[i:i+80] for i in range(0, len(data), 80)]
+                with open(f'ASI_Loader/{f}_data.inc', 'w') as dst:
+                    dst.write('{{\n    STR_TO_BYTES(\"\"\"\n')
+                    dst.write('\n'.join(f'    {chunk}' for chunk in chunks))
+                    dst.write('\n    \"\"\"),\n    %d\n}};\n' % len(data))
+        "
+        
+    - uses: actions/upload-artifact@v4
+      with:
+        name: prepared-sources
+        path: ASI_Loader/
+
+  build:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: prepared-sources
+        path: ASI_Loader/
     
     - name: Install CMake
       uses: lukka/get-cmake@latest
       
-    - name: Configure CMake
-      run: cmake -B build
-      
     - name: Build
-      run: cmake --build build --config Release
-      
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      run: |
+        mkdir build
+        cd build
+        cmake ../ASI_Loader
+        cmake --build . --config Release
+        
+    - uses: actions/upload-artifact@v4
       with:
         name: ASI_Loader
-        path: build/Release/ASI_Loader.asi
+        path: build/Release/*.asi
