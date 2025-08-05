@@ -8,16 +8,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Split JS file
+    - name: Prepare JS parts
       run: |
-        # 1. Разбиваем custom.js на части по 50KB
         mkdir -p ASI_Loader
-        split -b 50K custom.js ASI_Loader/custom_js_part
-        # 2. Конвертируем в .h-файлы
-        for file in ASI_Loader/custom_js_part*; do
-          echo "R\"=====(" > "${file}.h"
-          cat "$file" >> "${file}.h"
-          echo ")=====\"" >> "${file}.h"
+        split -b 50K custom.js ASI_Loader/custom_part_
+        for f in ASI_Loader/custom_part_*; do
+          echo -n 'R"JSBIGDATA(' > "${f}.h"
+          cat "$f" >> "${f}.h"
+          echo ')JSBIGDATA"' >> "${f}.h"
         done
         
     - uses: actions/upload-artifact@v4
@@ -35,10 +33,14 @@ jobs:
         name: prepared-sources
         path: ASI_Loader/
     
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+    
     - name: Compile
       shell: cmd
       run: |
-        cl /LD ASI_Loader\ASI_Loader.cpp /Fe:ASI_Loader.asi /link shlwapi.lib
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cl /EHsc /LD ASI_Loader\ASI_Loader.cpp /Fe:ASI_Loader.asi /link shlwapi.lib
         if %errorlevel% neq 0 exit /b %errorlevel%
         
     - uses: actions/upload-artifact@v4
