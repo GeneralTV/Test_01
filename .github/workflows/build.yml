@@ -12,25 +12,35 @@ jobs:
       uses: ilammy/msvc-dev-cmd@v1
 
     - name: Prepare JS parts
-      shell: cmd
+      shell: pwsh
       run: |
-        @echo off
-        mkdir ASI_Loader\js_parts
-        :: Разбиваем файл на части по 16KB
-        powershell -Command "& { Get-Content custom.js -ReadCount 0 | Out-File -Encoding OEM ASI_Loader\js_parts\part_00 }"
-        powershell -Command "& { $i=1; Get-Content custom.js -ReadCount 0 | Select-Object -Skip 16000 | Out-File -Encoding OEM ASI_Loader\js_parts\part_01 }"
-        :: Добавьте дополнительные строки для большего количества частей
+        # 1. Создаем папку для частей
+        New-Item -ItemType Directory -Path "ASI_Loader/js_parts" -Force
 
-        :: Генерируем файл с данными
-        echo const char* js_parts[] = { > ASI_Loader\js_data.h
-        for %%f in (ASI_Loader\js_parts\part_*) do (
-            echo R"=====( >> "%%f.tmp"
-            type "%%f" >> "%%f.tmp"
-            echo )=====", >> "%%f.tmp"
-            type "%%f.tmp" >> ASI_Loader\js_data.h
-        )
-        echo }; >> ASI_Loader\js_data.h
-        echo const int js_parts_count = %%~z >> ASI_Loader\js_data.h
+        # 2. Читаем файл как бинарный (чтобы избежать проблем с кодировкой)
+        $bytes = [System.IO.File]::ReadAllBytes("custom.js")
+        $chunkSize = 16KB # Размер части
+
+        # 3. Разбиваем на части
+        $parts = [System.Collections.ArrayList]@()
+        for ($i=0; $i -lt $bytes.Length; $i+=$chunkSize) {
+            $chunk = $bytes[$i..[Math]::Min($i+$chunkSize-1, $bytes.Length-1)]
+            $path = "ASI_Loader/js_parts/part_$($i.ToString('00000')).h"
+            [System.IO.File]::WriteAllText($path, 
+                "R\"=====(" + 
+                [System.Text.Encoding]::UTF8.GetString($chunk) + 
+                ")=====\"")
+            $parts.Add($path) | Out-Null
+        }
+
+        # 4. Генерируем основной заголовочный файл
+        $headerContent = @"
+const char* js_parts[] = {
+$((Get-Content $parts -Raw) -join ",\n")
+};
+const int js_parts_count = $($parts.Count);
+"@
+        Set-Content -Path "ASI_Loader/js_data.h" -Value $headerContent
 
     - name: Compile
       shell: cmd
