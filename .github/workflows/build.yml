@@ -11,7 +11,7 @@ jobs:
     - name: Setup MSVC
       uses: microsoft/setup-msbuild@v1
       with:
-        vs-version: '17.0'  # VS 2022
+        vs-version: '17.0'
 
     - name: Prepare environment
       shell: cmd
@@ -23,7 +23,7 @@ jobs:
         where link
 
     - name: Prepare JS parts
-      shell: pwsh
+      shell: powershell
       run: |
         # Проверка наличия файла
         if (-not (Test-Path "custom.js")) {
@@ -35,11 +35,11 @@ jobs:
         New-Item -ItemType Directory -Path "ASI_Loader" -Force
         New-Item -ItemType Directory -Path "ASI_Loader/js_parts" -Force
 
-        # Читаем файл как текст
+        # Читаем файл
         $content = [System.IO.File]::ReadAllText("custom.js", [System.Text.Encoding]::UTF8)
         Write-Host "Read JS file with length: $($content.Length)"
 
-        # Разбиваем на части по 15KB
+        # Разбиваем на части
         $chunkSize = 15000
         $parts = @()
         for ($i=0; $i -lt $content.Length; $i+=$chunkSize) {
@@ -48,37 +48,25 @@ jobs:
             $partPath = "ASI_Loader/js_parts/part_$($i.ToString('00000')).h"
             Set-Content -Path $partPath -Value "R\"=====($chunk)=====\"" -NoNewline
             $parts += $partPath
-            Write-Host "Created part: $partPath"
         }
 
         # Генерируем заголовочный файл
+        $headerParts = $parts | ForEach-Object { Get-Content $_ -Raw }
         $headerContent = @"
 // Auto-generated file
 const char* js_parts[] = {
-$($parts | ForEach-Object { Get-Content $_ -Raw } | Join-String -Separator ",\n")
+$($headerParts -join ",")
 };
 const int js_parts_count = $($parts.Count);
 "@
         Set-Content -Path "ASI_Loader/js_data.h" -Value $headerContent
-        Write-Host "Generated js_data.h"
 
     - name: Compile ASI
       shell: cmd
       run: |
         call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        
-        echo ==== COMPILE COMMAND ====
         cl /nologo /EHsc /std:c++17 /LD /Fe:ASI_Loader.asi ASI_Loader\ASI_Loader.cpp shlwapi.lib
-        
-        echo ==== DIR AFTER COMPILE ====
-        dir
-        
-        if exist ASI_Loader.asi (
-            echo !!! SUCCESS: ASI compiled !!!
-        ) else (
-            echo !!! ERROR: Compilation failed !!!
-            exit 1
-        )
+        if not exist ASI_Loader.asi exit 1
 
     - uses: actions/upload-artifact@v4
       with:
